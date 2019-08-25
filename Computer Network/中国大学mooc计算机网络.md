@@ -567,3 +567,6 @@ Accept-language: fr
 ```
 
 第一行为请求行，其余为头部行
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g6c89f15sij30ir0ag0vq.jpg)
+

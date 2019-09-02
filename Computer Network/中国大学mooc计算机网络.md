@@ -630,9 +630,64 @@ Host: www.someschool.edu
 User-agent: Mozilla/4.0
 Connection: close
 Accept-language: fr
+
 ```
 
-第一行为请求行，其余为头部行
+第一行为请求行，其余为头部行，最下方有一个空行，表示消息结束
 
 ![](https://tva1.sinaimg.cn/large/006y8mN6gy1g6c89f15sij30ir0ag0vq.jpg)
 
+方法的类型：
+
+- HTTP/1.0：GET、POST、HEAD（请Server不要将所请求的对象放入相应消息，用于测试）
+- HTTP/1.1：GET、POST、HEAD、PUT（将消息体中的文件上传到URL字段所指定的路径）、DELETE（删除URL字段所指定的文件）
+
+响应消息：ASCII码
+
+```http
+HTTP/1.1 200 OK
+Connection: close
+Date: Thu, 06 Aug 1998 12:00:15 GMT
+Server: Apache/1.3.0 (Unix)
+Last-Modified: Mo, 22 Jun 1998 ...
+Content-Length: 6821
+Content-Type: text/html
+
+data data data data data ...
+```
+
+HTTP响应状态码：响应消息的第一行
+
+如：
+
+- 200 OK
+- 301 Moved Permanently
+- 400 Bad Request
+- 404 Not Found
+- 505 HTTP Version Not Supported
+
+#### 2.2.4 Cookie技术
+
+某些网站为了辨别用户身份、进行session跟踪而存储在用户本地终端上的数据（通常经过加密），RFC6265
+
+Cookie的组件：
+
+- HTTP响应消息的cookie头部行
+- HTTP请求消息的cookie头部行
+- 保存在客户端主机上的cookie文件，由浏览器管理
+- Web服务器端的后台数据库
+
+Cookie可用于：身份认证、购物车、推荐、Web e-mail
+
+#### 2.2.5 Web缓存/代理服务器技术
+
+功能：在不访问服务器的前提下满足客户端的HTTP请求
+
+缩短客户请求的响应时间、减少机构/组织流量、在大范围内（Internet）实现有效的内容分发（CDN）
+
+1. 用户设定浏览器通过缓存进行Web访问
+2. 浏览器向缓存/代理服务器发送所有的HTTP请求
+    - 如果所请求对象在缓存中，缓存返回对象
+    - 否则，缓存服务器向原始服务器发送HTTP请求，获取对象，然后返回给客户端并保存该对象
+
+缓存既充当客户端，也充当服务器，一般由ISP假设

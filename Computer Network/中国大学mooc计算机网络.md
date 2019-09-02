@@ -691,3 +691,169 @@ Cookie可用于：身份认证、购物车、推荐、Web e-mail
     - 否则，缓存服务器向原始服务器发送HTTP请求，获取对象，然后返回给客户端并保存该对象
 
 缓存既充当客户端，也充当服务器，一般由ISP假设
+
+条件性GET方法：确定最新缓存版本
+
+在HTTP请求消息中声明所持有版本的日期，HTTP请求头：If-modified-since: \<date>
+
+在服务器中，如果缓存对象是最新的，则响应消息中不包含对象，HTTP/1.0 304 Not Modified
+
+### 2.3 Email应用
+
+#### 2.3.1 Email应用概述
+
+组成：邮件客户端、邮件服务器（核心）、SMTP协议（Simple Mail Transfer Protocol）
+
+邮件服务器（Mail Server）
+
+- 邮箱：存储发送给该用户的Email
+- 消息队列：存储等待发送的Email
+
+SMTP协议（RFC2821）：邮件服务器之间传递消息所使用的协议
+
+使用TCP，端口25
+
+三个阶段：
+
+- 握手
+- 消息的传输
+- 关闭
+
+命令/响应交互模式：
+
+- 命令：ASCII文本
+- 响应：状态代码和语句
+
+Email消息只能包含7位ASCII码
+
+SMTP交互：
+
+```
+S: 220 hamburger.edu
+C: HELO crepes.fr
+S: 250 Hello crepes.fr, pleased to meet you
+C: MAIL FROM: <alice@crepes.fr>
+S: 250 alice@crepes.fr ... Sender ok
+C: RCPT TO: <bob@hamburger.edu>
+S: 250 bob@hamburger.edu ... Recipient ok
+C: DATA
+S: 354 Enter mail, end with "." on a line by itself
+C: Do you like ketchup?
+C: How about pickles?
+C: .
+S: 250 Message accepted for delivery
+C: QUIT
+S: 221 hamburger.edu closing connection
+```
+
+SMTP特点：
+
+- 使用持久性连接
+- 要求消息必须由7位ASCII码构成
+- SMTP服务器使用CRLF.CRLF确定消息结束
+
+与HTTP对比：
+
+- HTTP：拉式（pull）
+- SMTP：推式（push）
+- 都使用命令/响应交互模式
+- 命令和状态代码都是ASCII码
+- HTTP：每个对象封装在独立的响应消息中
+- SMTP：多个对象在由多个部分构成的消息中发送
+
+#### 2.3.2 Email消息格式与POP3协议
+
+RFC 822：文本消息格式标准
+
+- 头部行（header）
+    - To
+    - From
+    - Subject
+- 消息体（body）
+    - 消息本身
+    - 只能是ASCII字符
+
+MIME：多媒体邮件扩展 RFC 2045，2056，在邮件头部增加额外的行以声明MIME的内容类型
+
+邮件访问协议：从服务器获取邮件
+
+POP：Post Office Protocol（RFC 1939），认证/授权和下载
+
+IMAP：Internet Mail Access Protocol（RFC 1730），更多功能，更加复杂，能操纵服务器上存储的消息
+
+HTTP：163、QQ Mail等
+
+POP：
+
+认证过程：
+
+- User：声明用户名
+- Pass：声明密码
+
+事务阶段：
+
+- List：列出消息数量
+- Retr：用编号获取消息
+- Dele：删除消息
+- Quit
+
+POP协议模式：“下载并删除”模式，“下载并保持”模式
+
+POP3是无状态协议
+
+IMAP协议：
+
+- 所有消息统一保存在一个地方：服务器
+- 允许用户利用文件夹组织消息
+- IMAP支持跨会话的用户状态：
+    - 文件夹名字
+    - 文件夹与消息ID之间的映射等
+
+### 2.4 DNS应用
+
+#### 2.4.1 DNS概述
+
+Internet上主机/路由器的识别问题
+
+域名与IP地址的映射问题
+
+多层命名服务器构成的分布式数据库，是应用层协议，完成名字的解析
+
+DNS服务：
+
+- 域名向IP地址的翻译
+- 主机别名
+- 邮件服务器别名
+- 负载均衡：Web服务器
+
+查询方式分两种：迭代查询和递归查询
+
+只要域名解析服务器获得域名-IP映射，即缓存这一映射，一段时间后缓存条目失效
+
+本地域名服务器一般会缓存顶级域名服务器的映射，因此根域名服务器不经常被访问
+
+#### 2.4.2 DNS记录和消息格式
+
+DNS记录：资源记录（RR）
+
+格式：name，value，type，ttl
+
+- Type=A，Name为主机域名，Value为IP地址
+- Type=NS，Name为域，Value为该域权威域名解析服务器的主机域名
+- Type=CNAME，Name为真实域名的别名，Value为真实域名
+- Type=MX，Value是与Name相对应的邮件服务器
+
+DNS协议：
+
+- 查询回复式
+- 消息格式相同
+
+消息格式：
+
+- 消息头
+    - Identification：16位查询编号，回复使用相同的编号
+    - flags：
+        - 查询或回复
+        - 期望递归
+        - 递归可用
+        - 权威回答

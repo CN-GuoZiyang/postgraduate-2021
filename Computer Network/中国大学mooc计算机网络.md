@@ -955,3 +955,491 @@ struct sockaddr_in
 
 TCP/IP地址族：`AF_INET`
 
+#### 2.6.3 Socket编程 - Socket API
+
+以winsock为例
+
+WSAStartup：使用Socket必须首先调用WSAStartup函数，两个参数，第一个指明程序请求的WinSock版本，高位字节指定副版本，低位字节指明主版本；第二个参数返回实际的Winsock的版本信息，这是一个指向WSADATA的指针
+
+WSACleanup：完成对请求的Socket库的使用，最后需要调用，解除与Socket库的绑定，释放资源
+
+socket：创建套接字，创建成功后返回套接字描述符，`sd = socket(protofamily, type, proto)`，第一个参数是协议族，protofamily = PF_INET（TCP/IP），第二个参数是套接字类型，第三个参数为协议号，0为默认
+
+```c
+struct protoent *p;
+p = getprotobyname("tcp");
+SOCKET sd = socket(PF_INET, SOCK_STREAM, p->p_proto);
+```
+
+Closesocket(SOCKET sd)：关闭描述符为sd的套接字，如果多个进程共享一个套接字，调用closesocket将套接字的引用计数减1，直至0才关闭。多个线程无法计数，计数以进程为单位。返回值0为成功
+
+bind：`int bind(sd, localaddr, addrlen)`，绑定套接字的本地端点地址：IP地址+端口号，客户端程序通常不需要调用，服务端可使用地址通配符`INADDR_ANY`来绑定多个IP
+
+listen：`int listen(sd, queuesize)`，置服务器端的流套接字处于监听状态，
+
+connect：`connect(sd, saddr, asddrlen)`，客户端调用，连接服务器，UDP时仅用于指定服务器端点地址
+
+accept：`newsock = accept(sd, caddr, caddrlen)`，服务器调用，从处于监听状态的流套接字sd的客户请求队列中取出排在最前面的一个客户请求，并创建一个套接字来与之通信
+
+send、sendto：发送数据，send不需要指定端点地址，适用于TCP或调用了connect的UDP客户端，sendto需要，适用于UDP服务器和未调用connect的UDP客户端
+
+recv、recvfrom：与上面同理
+
+setsockopt、getsockopt：设置/获取套接字参数
+
+TCP/IP定义了独立于操作系统的、用于协议头中的二进制整数表示：网络字节顺序
+
+htons：将本地字节顺序转换为网络字节顺序；ntohs：相反，都是16字节
+
+htonl、ntohl：32字节版本
+
+网络应用的SocketAPI（TCP）调用流程：左为客户端，右为服务器
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7n9soqswmj30ao085tam.jpg)
+
+#### 2.6.4 客户端软件的设计
+
+解析服务器IP地址：
+
+IP协议需要使用32位二进制IP地址，inet_addr()实现点分十进制IP到32位IP的转换，gethostbyname()实现域名到32位IP的转化
+
+解析服务器（熟知）端口号：
+
+客户端使用服务名标示端口，getservbyname()将服务名转换为端口号
+
+解析协议号：
+
+getprotobyname()实现协议名到协议号的转换
+
+TCP客户端软件流程：
+
+1. 确定服务器IP地址与端口号
+2. 创建套接字
+3. 分配本地端点地址（IP地址和端口）
+4. 连接服务器（套接字）
+5. 遵循应用层协议进行通信
+6. 关闭/释放连接
+
+UDP客户端软件流程：
+
+1. 确定服务器IP地址与端口号
+2. 创建套接字
+3. 分配本地端点地址（IP地址和端口）
+4. 指定服务器端点地址，构造UDP数据报
+5. 遵循应用层协议进行通信
+6. 关闭/释放套接字
+
+#### 2.6.5 服务器端软件的设计
+
+4种基本类型服务器：循环无连接、循环面向连接、并发无连接、并发面向连接
+
+循环无连接：
+
+1. 创建套接字
+2. 绑定端点地址
+3. 反复接收来自客户端的请求
+4. 遵循应用层协议，构造响应报文，发送给客户
+
+注意，服务器端不能使用connect()函数，无连接服务器使用sendto发送数据报
+
+服务器调用recvfrom()函数接收数据时，自动提取客户端点地址
+
+循环面向连接：
+
+1. 创建套接字，绑定端口号
+2. 设置套接字位被动监听模式，准备用于服务器
+3. 调用accept函数接收下一个连接请求，创建新套接字用于与该客户建立连接
+4. 遵循应用层协议，反复接收客户请求，构造并发送响应
+5. 完成特定客户服务后，关闭与该客户之间的连接，返回步骤3
+
+并发无连接：
+
+主线程1：创建套接字，并绑定熟知端口号
+
+主线程2：反复调用recvfrom函数，接收下一个客户请求，并创建新线程处理该客户响应
+
+子线程1：接收一个特定请求
+
+子线程2：根据应用层协议构造响应报文，并调用sendto发送
+
+子线程3：退出
+
+并发面向连接：
+
+主线程1：创建套接字并绑定熟知端口号
+
+主线程2：设置主套接字位被动监听模式，准备用于服务器
+
+主线程3：反复调用accept函数接收下一个连接请求，并创建一个新的子线程处理该客户响应
+
+子线程1：接收一个客户的服务请求
+
+子线程2：遵循应用层协议与特定客户进行交互
+
+子线程3：关闭/释放连接并退出
+
+## 第三章 传输层
+
+### 3.1 传输层服务
+
+传输层协议为运行在不同Host上的进程提供了一种**逻辑通信机制**
+
+端系统运行传输层协议：
+
+发送方：将应用递交的消息分成一个或多个点Segment，并向下传给网络层
+
+接收方：将接收到的segment组装成消息，并向上交给应用层
+
+网络层：提供主机间的逻辑通信机制
+
+传输层：提供应用进程之间的逻辑通信机制，以来于网络层之上，以来于网络层服务器，对网络层进行（可能的）增强
+
+### 3.2 多路复用和多路分用
+
+原因：某层的一个协议对应直接上层的多个协议/实体，则需要复用/分用
+
+分用：
+
+主机接收到IP数据报：每个数据报携带源IP地址、目的IP地址，每个数据报携带一个传输层的段，每个段携带源端口号和目的端口号
+
+主机收到Segment后，传输层协议提取IP地址和端口号信息，将Segment导向相应的Socket，TCP可能进行更多处理
+
+无连接的分用：
+
+利用端口号创建Socket，UDP的Socket使用二元组标示（目的IP、目的端口）
+
+主机收到UDP段后，检查段中的目的端口号，将UDP段导向绑定在该端口号的Socket，来自于不同源IP地址和/或源端口号的IP数据包被导向同一个Socket
+
+面向连接的分用
+
+TCP的Socket用四元组标识（源IP，源端口，目的IP，目的端口）
+
+接收端利用所有的四个值将Segment导向合适的Socket，服务器可能同时支持多个TCP Socket，每个Socket用自己的四元组标识，Web服务器为每个客户端开不同的Socket
+
+### 3.3 UDP
+
+基于IP协议：做了复用和分用，简单的错误校验
+
+端到端的错误检测原因：无法保证所有链路层协议都有错误检测，路由器存储转发过程中也可能出错
+
+“Best effort”服务，导致UDP段可能丢失或非按序到达
+
+无连接：UDP发送方和接收方无需握手，每个UDP段的处理独立于其他段
+
+UDP存在的价值：
+
+- 无需建立连接（减少延迟）
+- 实现简单，无需维护连接状态
+- 头部开销少
+- 没有拥塞控制，应用可以更好地控制发送时间和速率
+
+常用于流媒体：容忍丢失、速率敏感
+
+UDP还用于DNS和SNMP
+
+在UDP上实现可靠数据传输：在应用层增加可靠性机制、应用特定的错误恢复机制
+
+UDP校验和（checksum）：检测UDP段在传输过程中是否发生错误
+
+发送方：将段的内容看作16bit的整数，计算所有整数的和，进位加在和的后面，将得到的值按位取反，得到校验和
+
+发送方将校验和放入校验和字段
+
+接收方：计算所收到段的校验和，将其与校验和字段进行对比
+
+注意，最高位的进位要加在最低位上
+
+### 3.4 可靠数据传输的基本原理
+
+#### 3.4.1 可靠数据传输原理
+
+什么是可靠：不错、不丢、不乱
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nm69day4j30dw07hgob.jpg)
+
+渐进地设计可靠数据传输协议的发送方和接收方
+
+只考虑单向数据传输，但控制信息双向流动
+
+可以利用状态机（FSM）刻画传输协议
+
+Rdt1.0 可靠信道上的可靠数据传输：
+
+底层信道完全可靠，发送方和接收方的FSM独立
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7nmeiaz4xj30cf02wt9p.jpg)
+
+#### 3.4.2 Rdt 2.0
+
+产生位错误的信道
+
+底层信道可能翻转分组中的位：利用校验和检测位错误
+
+如何从错误中恢复：确认机制（ACK），NAK：接收方显式地告知发送方分组有错误，发送方接收到NAK后，重传分组
+
+基于这种机制的rdt称为ARQ协议
+
+Rdt 2.0引入的新机制：
+
+- 差错i检测
+- 接收方反馈控制消息：ACK/NAK
+- 重传
+
+停-等协议：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nmm3xkd4j30de07tac9.jpg)
+
+#### 3.4.3 Rdt 2.1和2.2
+
+Rdt 2.0的缺陷：如果ACK/NAK消息发生错误/被破坏
+
+如果ACK/NAK出错，发送方重传
+
+如何解决重复分组的问题：序列号，接收方丢弃重复分组
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nmz68443j30bh07eq5c.jpg)
+
+0和1为序列号
+
+接收方FSM：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nn0l9u5vj30if0ajgqe.jpg)
+
+Rdt 2.2：无NAK消息协议
+
+如Rdt 2.1功能相同，但只用ACK
+
+接收方通过ACK告知最后一个被正确接收的分组：在ACK消息中显式地加入被确认分组的序列号
+
+发送方收到重复ACK之后，采取与收到NAK相同的动作：重传当前分组
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nn728vd8j30io0b143h.jpg)
+
+#### 3.4.4 Rdt 3.0
+
+信道即可能发生错误，也可能丢失分组
+
+“校验和 + 序列号 + ACK + 重传”不够用
+
+方法：发送方等待“合理时间”，如果没收到ACK，重传
+
+需要定时器
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nnc6rk3xj30gc0aiq7e.jpg)
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7nni8tnb2j30jq0a7429.jpg)
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7nnkfox1fj30j30a50x3.jpg)
+
+Rdt 3.0性能很差
+
+性能举例：
+
+1Gbps链路，15ms端到端传播延迟，1KB分组
+$$
+T_{transmit} = \frac{L}{R} = \frac{8kb/pkt}{10^9b/sec} = 8 microsec
+$$
+发送方利用率：发送方发送时间的百分比
+$$
+U_{sender} = \frac{L/R}{RTT + L / R} = \frac{0.008}{30.008} = 0.00027
+$$
+在1Gbps的链路上每30ms才发送一个分组：33KB/sec
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7odi54y25j30i609njts.jpg)
+
+### 3.5 滑动窗口协议
+
+#### 3.5.1 流水线机制与滑动窗口协议
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7odm7a813j30g108nacn.jpg)
+
+流水线协议：允许发送方在收到ACK之前发送多个分组
+
+更大的序列号范围，发送方和接收方需要更大的存储空间以缓存分组
+
+滑动窗口协议：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7odp62ztqj30ai02h74q.jpg)
+
+绿色为已经发送完成且确认的分组，黄色为已经发送但还未确认的分组，蓝色表示还可以使用的序列号范围，白色为还未使用的序列号范围
+
+窗口：允许使用的序列号范围，尺寸在N：最多有N个正在等待确认的消息
+
+窗口在**序列号空间**向前滑动
+
+滑动窗口协议包括GBN、SR
+
+#### 3.5.2 GBN（Go-Back-N）协议
+
+发送方：
+
+分组头部包含k-bit序列号，窗口尺寸为N，最多允许N个分组未确认
+
+ACK(n)：确认到序列号n（包含n）的分组都已经被正确接收
+
+未空中的分组设置定时器
+
+如果出现Timeout(n)事件，则重传序列号大于等于n，还未收到ACK的所有分组
+
+接收方：
+
+ACK机制，发送拥有最高序列号的、已被正确接收的分组的ACK
+
+乱序到达的分组：1. 直接丢弃，2. 重新确认序列号最大的、按序到达的分组
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7oe6w1a6aj30br0abjum.jpg)
+
+#### 3.5.3 SR（Selective Repeat）协议
+
+接收方对每个分组单独确认，设置缓存机制，缓存乱序到达的分组
+
+发送方只重传那些没收到ACK的分组，为每个分组设置定时器
+
+发送方窗口：N个连续的序列号，限制已发送且未确认的分组
+
+SR有接收方的窗口：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7oei4um7dj30g908w40q.jpg)
+
+注意，如果接收方接收到的分组不在窗口中，依旧需要发送ACK以更新发送方窗口
+
+困境，接收方无法辨别这两种情况：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7oevidrrxj307p0awtbb.jpg)
+
+解决：
+$$
+N_S+N_R\le 2^k
+$$
+
+### 3.6 面向连接传输协议——TCP
+
+#### 3.6.1 TCP概述
+
+特点：
+
+点对点：一个发送方，一个接收方
+
+可靠的、按序的字节流
+
+流水线机制：TCP拥塞控制和流量控制机制设置窗口尺寸，介于GBN和SR，发送方和接收方都有缓存
+
+全双工：同一连接中能够传输双向数据流
+
+面向连接：通信双方在发送数据之前必须建立连接，连接状态由连接两端维护，TCP的连接包括：两台主机的缓存、连接状态变量、Socket等
+
+具有流量控制机制
+
+TCP段结构：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7ogrcjpypj30fw09nwiv.jpg)
+
+序列号：序列号是Segment中第一个字节的编号，而不是segment的编号，建立TCP连接时，双方随机选择序列号
+
+ACKs：希望接收到的下一个字节的序列号，累积确认：该序列号之前的所有字节均已被正确接收
+
+乱序Segment：TCP无规定，由实现者做出决策
+
+Telnet举例：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7ogw4v0fgj308d09e75u.jpg)
+
+#### 3.6.2 TCP可靠数据传输
+
+TCP在IP层提供的不可靠服务的基础上实现可靠数据传输服务
+
+流水线机制、累积确认、单一重传定时器
+
+触发重传的事件：超时、收到重复的ACK
+
+渐进式：暂不考虑重复ACK、暂不考虑流量控制、暂不考虑拥塞控制
+
+RTT和超时：
+
+设定定时器的超时时间：大于RTT
+
+估计RTT：SampleRTT，测量多个求平均，形成估计值EstimatedRTT
+
+EstimatedRTT的更新：
+$$
+EstimatedRTT = (1 - \alpha)*EstimatedRTT + \alpha * SampleRTT\\
+\alpha 典型值为0.125
+$$
+超时时间 = EstimatedRTT + “安全边界”
+
+如果EstimatedRTT变化较大，就需要较大的边界，就需要测量RTT的变化值：
+$$
+DevRTT = (1-\beta)*DevRTT + \beta * |SampleRTT - EstimatedRTT|\\
+通常，\beta=0.25
+$$
+最终，定时器的超时时间为：
+$$
+TimeoutInterval = EstimatedRTT + 4 * DevRTT
+$$
+TCP发送方事件：
+
+- 创建Segment
+- 序列号是Segment第一个字节的编号
+- 开启计时器
+- 设置超时时间
+
+如果出现超时：重传引起超时的Segment，重启定时器
+
+如果收到ACK：
+
+如果确认此前未确认的Segment，则更新SendBase，如果窗口还有未被确认的分组，则重启定时器
+
+TCP接收方：
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7ohw40eu2j30e508hn1s.jpg)
+
+快速重传机制：
+
+原机制如果发生超时，超时时间间隔将加倍
+
+该机制通过重复ACK检测分组丢失，如果某个分组丢失，可能会引发多个重复的ACK
+
+如果发送方收到对同一数据的3个ACK，则假定该数据之后的段已经丢失，则会在定时器超时之间进行重传
+
+#### 3.6.3 TCP流量控制
+
+接收方为TCP连接分配buffer，buffer中的数据将缓缓交付给上层
+
+流量控制就是保证发送方不会传输太多、太快以至于淹没接收方buffer
+
+假定TCP接收方丢弃乱序段：
+
+buffer中的可用空间 = RcvBuffer - ( LastByteRcvd - LastByteRead )
+
+![](https://tva1.sinaimg.cn/large/006y8mN6gy1g7oial872rj309403p752.jpg)
+
+接收方a经通过在段中的头部字段将RcvWindow告诉发送方，发送方将限制自己已经发送的但还未收到ACK的数据不超过接收方的空闲尺寸
+
+如果RcvWindow=0，会导致死锁，即时空闲之后无法通知
+
+实际上，发送方在这种情况下仍然可以发送很小的段以保证不陷入死锁
+
+#### 3.6.4 TCP连接管理
+
+发送方和接收方在传输数据前需要建立连接
+
+三次握手：
+
+1. 客户端发送SYN报文段到服务器，将SYN报文段置为1，并传递初始序列号
+2. 服务器收到SYN，返回SYNACK报文段，此时服务器分配缓存，并选择自己的初始序列号并告知客户端
+3. 客户端收到SYNACK，并返回ACK，用于与服务器确认收到同意建立连接的报文段，可以包含数据
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7oikfkkm7j30df09ljt3.jpg)
+
+四次挥手：
+
+1. 客户端向服务器发送TCP FIN
+2. 服务器收到FIN ，回复ACK，关闭连接，发送FIN
+3. 客户端收到FIN，回复ACK，此时进入等待时间，如果收到FIN，就会重新发送ACK，等待时间结束后关闭连接
+4. 服务器收到ACK，连接关闭
+
+![](https://tva1.sinaimg.cn/large/006y8mN6ly1g7oiqqzphtj307x07ydgv.jpg)
+
+### 3.7 拥塞控制原理
+
+拥塞：分组丢失、分组延迟过大
